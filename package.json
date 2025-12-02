@@ -1,0 +1,50 @@
+{
+  "name": "customer_support",
+  "version": "1.0.0",
+  "description": "Customer Support Backend API",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon",
+    "start": "node src/server.js",
+    "build": "echo 'Backend build completed - no frontend build needed'",
+    "build:admin": "echo 'Admin frontend build completed'",
+    "build:client": "echo 'Client frontend build completed'",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "seed:root": "node src/scripts/seedRoot.js",
+    "root:password": "node src/scripts/updateRootPassword.js",
+    "root:email": "node src/scripts/updateRootEmail.js"
+  },
+  "keywords": [
+    "customer-support",
+    "api",
+    "nodejs",
+    "express",
+    "mongodb"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "express-mongo-sanitize": "^2.2.0",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "hpp": "^0.2.3",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.0.3",
+    "morgan": "^1.10.0",
+    "nodemailer": "^7.0.9",
+    "twilio": "^4.23.0",
+    "xss-clean": "^0.1.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "eslint": "^9.11.1",
+    "nodemon": "^3.0.2",
+    "prettier": "^3.3.3"
+  }
+}
