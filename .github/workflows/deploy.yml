@@ -3,102 +3,71 @@ name: Deploy to Production
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  # Frontend deployments removed - this is backend repository only
-  # Frontend should be deployed from separate repositories
-
   deploy-backend:
     runs-on: ubuntu-latest
+    
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     
     - name: Setup Node.js
-      uses: actions/setup-node@v2
+      uses: actions/setup-node@v3
       with:
         node-version: '18'
         
     - name: Install dependencies
-      run: npm install
-      
-    - name: Build backend
+      run: npm ci
+    
+    - name: Build
       run: npm run build
-      
+    
     - name: Create deployment package
       run: |
         mkdir -p deployment-package
         cp -r src/ deployment-package/
-        cp -r deployment/ deployment-package/
         cp package*.json deployment-package/
         cp ecosystem.config.cjs deployment-package/
-        # ensure .env present in deployment (check both locations)
+        cp -r .github/ deployment-package/ 2>/dev/null || true
+        
+        # Handle .env file
         if [ -f "production.env" ]; then
           cp production.env deployment-package/.env
-        elif [ -f "deployment/production.env" ]; then
-          cp deployment/production.env deployment-package/.env
+        elif [ -f ".env.production" ]; then
+          cp .env.production deployment-package/.env
+        elif [ -f ".env" ]; then
+          cp .env deployment-package/.env
         else
-          echo "Warning: production.env not found, creating template from env.example.txt"
-          if [ -f "env.example.txt" ]; then
-            cp env.example.txt deployment-package/.env
-          fi
+          echo "No .env file found, using example"
+          cp .env.example deployment-package/.env 2>/dev/null || true
         fi
+        
         tar -czf backend-deployment.tar.gz deployment-package/
     
-    - name: Deploy to EC2 via SCP
+    - name: Deploy to Server
       env:
-        EC2_HOST: ${{ secrets.EC2_HOST }}
-        EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
-        EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        SERVER_USER: ${{ secrets.SERVER_USER }}
+        DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
       run: |
-        # Create SSH config with proper formatting
         mkdir -p ~/.ssh
-        echo "$EC2_SSH_KEY" > ~/.ssh/ec2_key
-        chmod 600 ~/.ssh/ec2_key
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
         
-        # Test SSH connection first
-        echo "Testing SSH connection..."
-        ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 $EC2_USERNAME@$EC2_HOST "echo 'SSH connection successful!'" || {
-          echo "SSH connection failed. Checking key format..."
-          echo "Key content preview:"
-          head -3 ~/.ssh/ec2_key
-          echo "Key permissions:"
-          ls -la ~/.ssh/ec2_key
-          exit 1
-        }
+        # Deploy files
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key \
+          backend-deployment.tar.gz \
+          $SERVER_USER@$SERVER_HOST:/tmp/
         
-        # Upload deployment package
-        echo "Uploading deployment package..."
-        scp -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 backend-deployment.tar.gz $EC2_USERNAME@$EC2_HOST:/tmp/
-        
-        # Execute deployment commands
-        echo "Executing deployment commands..."
-        ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 $EC2_USERNAME@$EC2_HOST << 'EOF'
-          echo "Starting deployment..."
-          cd /home/ec2-user
-          
-          # Stop existing PM2 processes
-          pm2 stop all || true
-          
-          # Backup existing deployment
-          if [ -d "customer-support" ]; then
-            mv customer-support customer-support-backup-$(date +%Y%m%d_%H%M%S)
-          fi
-          
-          # Extract new deployment
-          tar -xzf /tmp/backend-deployment.tar.gz
-          mv deployment-package customer-support
-          
-          # Install dependencies and start
-          cd customer-support
+        # Extract and setup on server
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key \
+          $SERVER_USER@$SERVER_HOST "
+          cd /tmp
+          tar -xzf backend-deployment.tar.gz
+          rsync -av deployment-package/ $DEPLOY_PATH/
+          cd $DEPLOY_PATH
           npm install --production
-          pm2 start ecosystem.config.cjs
-          
-          # Cleanup
-          rm /tmp/backend-deployment.tar.gz
-          
-          echo "Deployment completed successfully!"
-          pm2 status
-        EOF
+          pm2 restart ecosystem.config.cjs || pm2 start ecosystem.config.cjs
+        "
