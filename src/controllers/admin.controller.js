@@ -53,6 +53,8 @@ export const createSubAdmin = async (req, res) => {
     isActive: !!isActive,
     createdBy: req.user.id,
     tokenVersion: 0,
+    // Force newly created sub-admins to change password on first login
+    mustChangePassword: true,
     // Store permissions if provided
     ...(Array.isArray(permissions) ? { permissions } : {})
   };
@@ -151,7 +153,7 @@ export const updateSubAdmin = async (req, res) => {
 
   return res.status(200).json({
     success: true,
-    message: 'Sub admin updated',
+    message: 'Sub admin WhatsApp link updated successfully',
     data: {
       id: String(sub._id),
       email: sub.email,

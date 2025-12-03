@@ -27,6 +27,8 @@ const UserSchema = new mongoose.Schema(
     tokenVersion: { type: Number, default: 0 },
     lastLoginAt: { type: Date },
     lastLogoutAt: { type: Date },
+    // Force first-time password change (primarily for sub-admins)
+    mustChangePassword: { type: Boolean, default: false },
     // Password Reset fields
     resetPasswordToken: { type: String },
     resetPasswordExpires: { type: Date }
