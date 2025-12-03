@@ -117,7 +117,7 @@ export const verifyOtpCode = async (req, res, next) => {
     }
 
     const client = ensureTwilioClient();
-    const { verifyServiceSid, tokenSecret, tokenExpiresIn } = getOtpConfig();
+    const { verifyServiceSid } = getOtpConfig();
 
     let verificationResult = null;
     try {
@@ -135,24 +135,36 @@ export const verifyOtpCode = async (req, res, next) => {
       return res.json({ success: false, message: 'Invalid or expired OTP' });
     }
 
-    if (!tokenSecret) {
-      res.status(500);
-      return res.json({ success: false, message: 'OTP token secret not configured' });
+    // After OTP is verified, return the latest WhatsApp link (waLink)
+    // for this phone number. If the same phone exists on multiple users,
+    // we pick the most recently updated one (latest record by updatedAt).
+    const latestUser = await User.findOne({ phone }).sort({ updatedAt: -1 }).populate('branchId');
+
+    if (!latestUser) {
+      res.status(404);
+      return res.json({ success: false, message: 'Phone number is not registered', data: null });
     }
 
-    const otpToken = jwt.sign({
-      phone,
-      purpose: 'search-otp'
-    }, tokenSecret, {
-      expiresIn: tokenExpiresIn
-    });
+    let waLink = '';
+
+    if (latestUser.role === 'client' || latestUser.role === 'sub') {
+      waLink = latestUser.branchWaLink || latestUser.branchId?.waLink || '';
+    } else if (latestUser.role === 'root') {
+      waLink = latestUser.branchId?.waLink || process.env.DEFAULT_WA_LINK || '';
+    } else {
+      waLink = latestUser.branchId?.waLink || '';
+    }
+
+    if (!waLink) {
+      res.status(404);
+      return res.json({ success: false, message: 'WhatsApp link not configured', data: null });
+    }
 
     return res.status(200).json({
       success: true,
       message: 'OTP verified',
       data: {
-        otpToken,
-        expiresIn: tokenExpiresIn
+        waLink
       }
     });
   } catch (error) {

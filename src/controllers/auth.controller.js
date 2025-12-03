@@ -52,6 +52,7 @@ export const login = async (req, res) => {
         username: user.username || null,
         role: user.role,
         isActive: user.isActive,
+        mustChangePassword: !!user.mustChangePassword,
         ...(user.role === 'sub' ? {
           branchId: user.branchId ? String(user.branchId) : null,
           branchName: user.branchName || null,
@@ -60,8 +61,55 @@ export const login = async (req, res) => {
       },
       accessToken,
       sessionActive: true,
-      isActiveEffective: !!user.isActive
+      isActiveEffective: !!user.isActive,
+      requirePasswordChange: !!user.mustChangePassword
     }
+  });
+};
+
+// First-time password change for any user who is forced to update password on first login
+export const firstTimeChangePassword = async (req, res) => {
+  const { currentPassword, newPassword, confirmNewPassword } = req.body || {};
+
+  if (!currentPassword || !newPassword || !confirmNewPassword) {
+    return res.status(400).json({
+      success: false,
+      message: 'Current password, new password and confirm new password are required'
+    });
+  }
+
+  if (newPassword !== confirmNewPassword) {
+    return res.status(400).json({
+      success: false,
+      message: 'New password and confirm password do not match'
+    });
+  }
+
+  const user = await User.findById(req.user.id).select('_id passwordHash tokenVersion mustChangePassword');
+  if (!user) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  if (!user.mustChangePassword) {
+    return res.status(400).json({
+      success: false,
+      message: 'Password change is not required'
+    });
+  }
+
+  const ok = user.passwordHash && (await bcrypt.compare(currentPassword, user.passwordHash));
+  if (!ok) {
+    return res.status(401).json({ success: false, message: 'Invalid current password' });
+  }
+
+  user.passwordHash = await bcrypt.hash(newPassword, 12);
+  user.mustChangePassword = false;
+  user.tokenVersion += 1; // logout everywhere
+  await user.save();
+
+  return res.status(200).json({
+    success: true,
+    message: 'Password updated successfully. Please login again.'
   });
 };
 
@@ -249,5 +297,5 @@ export const resetPassword = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Something went wrong' });
   }
 };
-
+//testing by ashish
 
